@@ -1,6 +1,7 @@
 # zap_helper.py
 from zapv2 import ZAPv2
 import time
+import requests as req
 
 ZAP_PROXY = 'http://127.0.0.1:8080'
 ZAP_API_KEY = 'frtomkn7unao5659t8ners76di'
@@ -183,3 +184,266 @@ def generate_report(scan_data):
         f.write(html)
 
     return json_path, html_path
+
+def get_intercepted_requests(zap):
+    try:
+        messages = zap.core.messages(baseurl=TARGET)
+        requests_list = []
+        for msg in messages:
+            # requestHeader నుండి method తీసుకో
+            req_header = msg.get('requestHeader', '')
+            resp_header = msg.get('responseHeader', '')
+
+            # First line: "GET http://127.0.0.1:5001/ HTTP/1.1"
+            method = 'GET'
+            url = TARGET
+            status_code = 'N/A'
+
+            if req_header:
+                first_line = req_header.split('\r\n')[0]
+                parts = first_line.strip().split(' ')
+                if len(parts) >= 2:
+                    method = parts[0]
+                    url = parts[1]
+
+            # Response header నుండి status code తీసుకో
+            if resp_header:
+                resp_first = resp_header.split('\r\n')[0]
+                resp_parts = resp_first.strip().split(' ')
+                if len(resp_parts) >= 2:
+                    status_code = resp_parts[1]
+
+            requests_list.append({
+                'method': method,
+                'url': url[:60],
+                'status_code': status_code
+            })
+
+        print(f'Intercepted {len(requests_list)} requests')
+        return requests_list
+
+    except Exception as e:
+        print(f'Proxy error: {e}')
+        return []
+
+def run_fuzzing(zap):
+    # Test endpoints with crafted payloads
+    fuzz_results = []
+
+    # Payloads to test
+    sqli_payloads = [
+        "' OR '1'='1",
+        "'; DROP TABLE users;--",
+        "1' AND SLEEP(5)--",
+        "' UNION SELECT NULL--"
+    ]
+
+    xss_payloads = [
+        "<script>alert(1)</script>",
+        "<img src=x onerror=alert(1)>",
+        "javascript:alert(1)",
+        "<svg/onload=alert(1)>"
+    ]
+
+    path_traversal = [
+        "../../../etc/passwd",
+        "..\\..\\windows\\win.ini",
+        "%2e%2e%2fetc/passwd"
+    ]
+
+    # Test search endpoint with SQL injection
+    print('Fuzzing search endpoint...')
+    for payload in sqli_payloads:
+        try:
+            response = req.get(
+                f'{TARGET}/search',
+                params={'q': payload},
+                timeout=5
+            )
+            fuzz_results.append({
+                'endpoint': '/search',
+                'type': 'SQL Injection',
+                'payload': payload,
+                'status_code': response.status_code,
+                'response_length': len(response.text),
+                'result': 'Responded' if response.status_code == 200
+                          else 'Blocked'
+            })
+        except Exception as e:
+            fuzz_results.append({
+                'endpoint': '/search',
+                'type': 'SQL Injection',
+                'payload': payload,
+                'status_code': 'Error',
+                'response_length': 0,
+                'result': str(e)
+            })
+
+    # Test search endpoint with XSS
+    print('Fuzzing XSS payloads...')
+    for payload in xss_payloads:
+        try:
+            response = req.get(
+                f'{TARGET}/search',
+                params={'q': payload},
+                timeout=5
+            )
+            # Check if payload reflected in response
+            reflected = payload in response.text
+            fuzz_results.append({
+                'endpoint': '/search',
+                'type': 'XSS',
+                'payload': payload[:40],
+                'status_code': response.status_code,
+                'response_length': len(response.text),
+                'result': '⚠️ REFLECTED' if reflected else 'Not Reflected'
+            })
+        except Exception as e:
+            fuzz_results.append({
+                'endpoint': '/search',
+                'type': 'XSS',
+                'payload': payload[:40],
+                'status_code': 'Error',
+                'response_length': 0,
+                'result': str(e)
+            })
+
+    # Test login with path traversal
+    print('Fuzzing path traversal...')
+    for payload in path_traversal:
+        try:
+            response = req.post(
+                f'{TARGET}/login',
+                data={'username': payload, 'password': 'test'},
+                timeout=5
+            )
+            fuzz_results.append({
+                'endpoint': '/login',
+                'type': 'Path Traversal',
+                'payload': payload,
+                'status_code': response.status_code,
+                'response_length': len(response.text),
+                'result': 'Responded'
+            })
+        except Exception as e:
+            fuzz_results.append({
+                'endpoint': '/login',
+                'type': 'Path Traversal',
+                'payload': payload,
+                'status_code': 'Error',
+                'response_length': 0,
+                'result': str(e)
+            })
+
+    print(f'Fuzzing done! {len(fuzz_results)} tests run')
+    return fuzz_results
+
+def run_auth_testing(zap):
+    auth_results = []
+
+    # Test credentials
+    test_credentials = [
+        {'username': 'admin',  'password': 'admin123',   'expected': 'success'},
+        {'username': 'user',   'password': 'password123','expected': 'success'},
+        {'username': 'admin',  'password': 'wrongpass',  'expected': 'fail'},
+        {'username': 'hacker', 'password': 'hacker123',  'expected': 'fail'},
+        {'username': 'admin',  'password': '',           'expected': 'fail'},
+        {'username': '',       'password': 'admin123',   'expected': 'fail'},
+        {'username': 'admin',  'password': 'admin',      'expected': 'fail'},
+        {'username': "' OR '1'='1", 'password': 'any',  'expected': 'fail'},
+    ]
+
+    import requests as req
+    for cred in test_credentials:
+        try:
+            response = req.post(
+                f'{TARGET}/login',
+                data={
+                    'username': cred['username'],
+                    'password': cred['password']
+                },
+                timeout=5
+            )
+            # Check response for success/failure
+            if 'SUCCESS' in response.text:
+                actual = 'success'
+            else:
+                actual = 'fail'
+
+            # Check if result matches expected
+            if actual == cred['expected']:
+                result = '✅ Expected'
+            else:
+                result = '⚠️ UNEXPECTED'
+
+            auth_results.append({
+                'username': cred['username'][:20],
+                'password': cred['password'][:15],
+                'expected': cred['expected'],
+                'actual':   actual,
+                'status':   response.status_code,
+                'result':   result
+            })
+            print(f"Auth test: {cred['username']} "
+                  f"— {actual} — {result}")
+
+        except Exception as e:
+            auth_results.append({
+                'username': cred['username'][:20],
+                'password': cred['password'][:15],
+                'expected': cred['expected'],
+                'actual':   'error',
+                'status':   'Error',
+                'result':   str(e)[:30]
+            })
+
+    print(f'Auth testing done! {len(auth_results)} tests')
+    return auth_results
+
+
+def scan_api_endpoints(zap):
+    api_results = []
+    import requests as req
+
+    # API endpoints to test
+    endpoints = [
+        {'url': f'{TARGET}/api/users',       'method': 'GET'},
+        {'url': f'{TARGET}/api/user/admin',  'method': 'GET'},
+        {'url': f'{TARGET}/api/user/test',   'method': 'GET'},
+        {'url': f'{TARGET}/api/user/hacker', 'method': 'GET'},
+        {'url': f'{TARGET}/api/status',      'method': 'GET'},
+    ]
+
+    for ep in endpoints:
+        try:
+            response = req.get(ep['url'], timeout=5)
+
+            # Try to parse JSON
+            try:
+                json_data = response.json()
+                data_preview = str(json_data)[:60]
+            except:
+                data_preview = response.text[:60]
+
+            api_results.append({
+                'url':          ep['url'].replace(TARGET, ''),
+                'method':       ep['method'],
+                'status_code':  response.status_code,
+                'response':     data_preview,
+                'accessible':   '⚠️ EXPOSED' if response.status_code == 200
+                                else '✅ Protected'
+            })
+            print(f"API test: {ep['url']} "
+                  f"— {response.status_code}")
+
+        except Exception as e:
+            api_results.append({
+                'url':         ep['url'].replace(TARGET, ''),
+                'method':      ep['method'],
+                'status_code': 'Error',
+                'response':    str(e)[:40],
+                'accessible':  '❌ Error'
+            })
+
+    print(f'API scan done! {len(api_results)} endpoints tested')
+    return api_results
