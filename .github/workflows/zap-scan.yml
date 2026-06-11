@@ -38,15 +38,15 @@ jobs:
           sleep 10
 
       - name: Verify target app
-        run: |
-          curl http://127.0.0.1:5001 || true
+        run: curl http://127.0.0.1:5001 || true
 
       - name: ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.12.0
+        uses: zaproxy/action-baseline@v0.14.0   # ✅ updated: supports Node 24
         with:
           target: 'http://127.0.0.1:5001'
           fail_action: false
           allow_issue_writing: false
+          artifact_name: zap-baseline-report    # ✅ fix: valid name (hyphens, no underscores)
 
       - name: List generated files
         if: always()
@@ -56,7 +56,7 @@ jobs:
           echo "All Files:"
           find . -type f
 
-      - name: Upload HTML Reports
+      - name: Upload HTML Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -66,7 +66,7 @@ jobs:
             **/*.html
           if-no-files-found: warn
 
-      - name: Upload JSON Reports
+      - name: Upload JSON Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
