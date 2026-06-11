@@ -9,6 +9,9 @@ on:
 
 permissions:
   contents: read
+  security-events: write
+  issues: write
+  pull-requests: write
 
 jobs:
   zap-scan:
@@ -31,30 +34,55 @@ jobs:
 
       - name: Start target app
         run: |
-          nohup python target_app.py &
-          sleep 5
+          nohup python target_app.py > app.log 2>&1 &
+          sleep 10
 
-      - name: Verify target app running
+      - name: Verify target app
         run: |
-          curl http://127.0.0.1:5001 || echo "App check done"
+          curl http://127.0.0.1:5001 || true
 
-      - name: Run ZAP Scan
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'http://127.0.0.1:5001'
+          fail_action: false
+          allow_issue_writing: false
+          artifact_name: 'zap-scan-report'
+
+      - name: List generated files
+        if: always()
         run: |
-          docker pull ghcr.io/zaproxy/zaproxy:stable
-          docker run --rm \
-            --network host \
-            -v $(pwd):/zap/wrk \
-            ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py \
-            -t http://127.0.0.1:5001 \
-            -r zap-report.html \
-            -l WARN \
-            --auto || true
+          echo "Current Directory:"
+          pwd
+          echo "All Files:"
+          find . -type f
 
-      - name: Upload ZAP Report
+      - name: Upload HTML Reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: zap-report
-          path: zap-report.html
+          name: zap-html-report
+          path: |
+            *.html
+            **/*.html
+          if-no-files-found: warn
+
+      - name: Upload JSON Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-json-report
+          path: |
+            *.json
+            **/*.json
+          if-no-files-found: warn
+
+      - name: Upload XML Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-xml-report
+          path: |
+            *.xml
+            **/*.xml
           if-no-files-found: warn
