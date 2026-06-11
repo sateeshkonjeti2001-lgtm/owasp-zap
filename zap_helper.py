@@ -101,67 +101,198 @@ def run_active_scan(zap):
 import json
 from datetime import datetime
 
-def generate_report(scan_data):
+def generate_report(scan_data, zap=None):
+    from datetime import datetime
+    import json
+
+    # Collect all data
+    active_alerts = scan_data.get('active_alerts', {})
+    all_alerts    = active_alerts.get('all', [])
+    high          = active_alerts.get('high', [])
+    medium        = active_alerts.get('medium', [])
+    low           = active_alerts.get('low', [])
+    info          = active_alerts.get('info', [])
+
     report = {
-        'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'target': TARGET,
-        'spider_urls': scan_data.get('urls', []),
-        'passive_alerts': len(scan_data.get('alerts', [])),
+        'date':            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'target':          TARGET,
+        'spider_urls':     scan_data.get('urls', []),
+        'passive_alerts':  len(scan_data.get('alerts', [])),
         'active_summary': {
-            'high':   len(scan_data.get('active_alerts', {}).get('high', [])),
-            'medium': len(scan_data.get('active_alerts', {}).get('medium', [])),
-            'low':    len(scan_data.get('active_alerts', {}).get('low', [])),
-            'info':   len(scan_data.get('active_alerts', {}).get('info', []))
+            'high':   len(high),
+            'medium': len(medium),
+            'low':    len(low),
+            'info':   len(info)
         },
-        'all_alerts': scan_data.get('active_alerts', {}).get('all', [])
+        'all_alerts':      all_alerts,
+        'fuzz_results':    scan_data.get('fuzz_results', []),
+        'auth_results':    scan_data.get('auth_results', []),
+        'api_results':     scan_data.get('api_results', []),
+        'proxy_requests':  scan_data.get('proxy_requests', [])
     }
 
-    # Save JSON file
+    # Save JSON
     json_path = 'reports/scan_report.json'
     with open(json_path, 'w') as f:
         json.dump(report, f, indent=2)
 
-    # Save HTML file
+    # Save XML if ZAP connected
+    if zap:
+        try:
+            xml_data = zap.core.xmlreport(apikey=ZAP_API_KEY)
+            with open('reports/scan_report.xml', 'w',
+                      encoding='utf-8') as f:
+                f.write(xml_data)
+            print('XML report saved!')
+        except Exception as e:
+            print(f'XML error: {e}')
+
+    # Generate Advanced HTML Report
     html_path = 'reports/scan_report.html'
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>ZAP Scan Report</title>
-        <style>
-            body {{ font-family: Arial; margin: 40px; }}
-            h1 {{ color: #333; }}
-            .summary {{ display: flex; gap: 20px; margin: 20px 0; }}
-            .box {{ padding: 20px; border-radius: 8px; text-align: center; flex: 1; }}
-            .high   {{ background: #ffe0e0; border: 2px solid red; }}
-            .medium {{ background: #fff3cd; border: 2px solid orange; }}
-            .low    {{ background: #e0f7e0; border: 2px solid green; }}
-            .info   {{ background: #e0f0ff; border: 2px solid blue; }}
-            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-            th {{ background: #333; color: white; padding: 10px; text-align: left; }}
-            td {{ padding: 8px; border-bottom: 1px solid #ddd; }}
-            .row-High          {{ background: #ffe0e0; }}
-            .row-Medium        {{ background: #fff3cd; }}
-            .row-Low           {{ background: #e0f7e0; }}
-            .row-Informational {{ background: #e0f0ff; }}
-        </style>
-    </head>
-    <body>
-        <h1>OWASP ZAP Security Scan Report</h1>
-        <p><strong>Date:</strong> {report['date']}</p>
-        <p><strong>Target:</strong> {report['target']}</p>
-        <p><strong>URLs Discovered:</strong> {len(report['spider_urls'])}</p>
-        <p><strong>Passive Alerts:</strong> {report['passive_alerts']}</p>
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>OWASP ZAP Advanced Security Report</title>
+    <style>
+        * {{ margin:0; padding:0; box-sizing:border-box; }}
+        body {{
+            font-family: Arial, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+        }}
+        .header {{
+            background: #1a1a2e;
+            color: white;
+            padding: 30px 40px;
+        }}
+        .header h1 {{
+            font-size: 1.8rem;
+            color: #00d4ff;
+        }}
+        .header p {{
+            color: rgba(255,255,255,0.6);
+            margin-top: 5px;
+            font-size: 13px;
+        }}
+        .container {{
+            max-width: 1100px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }}
+        .kpi-grid {{
+            display: grid;
+            grid-template-columns: repeat(4,1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }}
+        .kpi {{
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }}
+        .kpi-val {{
+            font-size: 2.2rem;
+            font-weight: 900;
+            line-height: 1;
+        }}
+        .kpi-lbl {{
+            font-size: 12px;
+            color: #666;
+            margin-top: 6px;
+        }}
+        .kpi.high   .kpi-val {{ color: #dc3545; }}
+        .kpi.medium .kpi-val {{ color: #fd7e14; }}
+        .kpi.low    .kpi-val {{ color: #28a745; }}
+        .kpi.info   .kpi-val {{ color: #007bff; }}
+        .section {{
+            background: white;
+            border-radius: 10px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }}
+        .section h2 {{
+            font-size: 1.1rem;
+            color: #1a1a2e;
+            border-bottom: 2px solid #f0f2f5;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }}
+        th {{
+            background: #1a1a2e;
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }}
+        td {{ padding: 8px 10px; border-bottom: 1px solid #eee; }}
+        .row-High          {{ background: #ffe0e0; }}
+        .row-Medium        {{ background: #fff3cd; }}
+        .row-Low           {{ background: #e0f7e0; }}
+        .row-Informational {{ background: #e0f0ff; }}
+        .row-exposed {{ background: #fff3cd; }}
+        .row-protected {{ background: #e0f7e0; }}
+        .badge {{
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+        }}
+        .badge-high   {{ background: #ffe0e0; color: #dc3545; }}
+        .badge-medium {{ background: #fff3cd; color: #fd7e14; }}
+        .badge-low    {{ background: #e0f7e0; color: #28a745; }}
+        .badge-info   {{ background: #e0f0ff; color: #007bff; }}
+        .footer {{
+            text-align: center;
+            padding: 20px;
+            color: #999;
+            font-size: 12px;
+        }}
+    </style>
+</head>
+<body>
 
-        <h2>Active Scan Summary</h2>
-        <div class="summary">
-            <div class="box high">High<br><strong>{report['active_summary']['high']}</strong></div>
-            <div class="box medium">Medium<br><strong>{report['active_summary']['medium']}</strong></div>
-            <div class="box low">Low<br><strong>{report['active_summary']['low']}</strong></div>
-            <div class="box info">Info<br><strong>{report['active_summary']['info']}</strong></div>
+<div class="header">
+    <h1>OWASP ZAP Advanced Security Report</h1>
+    <p>Generated: {report['date']} |
+       Target: {report['target']} |
+       URLs Found: {len(report['spider_urls'])}</p>
+</div>
+
+<div class="container">
+
+    <!-- KPI Summary -->
+    <div class="kpi-grid">
+        <div class="kpi high">
+            <div class="kpi-val">{report['active_summary']['high']}</div>
+            <div class="kpi-lbl">High Risk</div>
         </div>
+        <div class="kpi medium">
+            <div class="kpi-val">{report['active_summary']['medium']}</div>
+            <div class="kpi-lbl">Medium Risk</div>
+        </div>
+        <div class="kpi low">
+            <div class="kpi-val">{report['active_summary']['low']}</div>
+            <div class="kpi-lbl">Low Risk</div>
+        </div>
+        <div class="kpi info">
+            <div class="kpi-val">{report['active_summary']['info']}</div>
+            <div class="kpi-lbl">Informational</div>
+        </div>
+    </div>
 
-        <h2>All Alerts</h2>
+    <!-- Active Scan Alerts -->
+    <div class="section">
+        <h2>⚡ Active Scan Alerts
+            ({len(report['all_alerts'])} total)
+        </h2>
         <table>
             <tr>
                 <th>Risk</th>
@@ -171,18 +302,123 @@ def generate_report(scan_data):
             </tr>
             {''.join(f"""
             <tr class="row-{a.get('risk','Low')}">
-                <td>{a.get('risk','')}</td>
+                <td>
+                    <span class="badge badge-{
+                        a.get('risk','Low').lower()
+                    }">{a.get('risk','')}</span>
+                </td>
                 <td>{a.get('alert','')}</td>
                 <td>{a.get('url','')[:50]}</td>
-                <td>{a.get('solution','')[:80]}</td>
+                <td>{a.get('solution','')[:60]}</td>
             </tr>""" for a in report['all_alerts'])}
         </table>
-    </body>
-    </html>
-    """
-    with open(html_path, 'w') as f:
+    </div>
+
+    <!-- Fuzzing Results -->
+    <div class="section">
+        <h2>🎯 Fuzzing Results
+            ({len(report['fuzz_results'])} tests)
+        </h2>
+        <table>
+            <tr>
+                <th>Endpoint</th>
+                <th>Type</th>
+                <th>Payload</th>
+                <th>Status</th>
+                <th>Result</th>
+            </tr>
+            {''.join(f"""
+            <tr class="{'row-High' if 'REFLECTED'
+                        in r.get('result','')
+                        else 'row-Low'}">
+                <td>{r.get('endpoint','')}</td>
+                <td>{r.get('type','')}</td>
+                <td>{r.get('payload','')[:35]}</td>
+                <td>{r.get('status_code','')}</td>
+                <td><b>{r.get('result','')}</b></td>
+            </tr>""" for r in report['fuzz_results'])}
+        </table>
+    </div>
+
+    <!-- Auth Testing Results -->
+    <div class="section">
+        <h2>🔐 Authentication Testing
+            ({len(report['auth_results'])} tests)
+        </h2>
+        <table>
+            <tr>
+                <th>Username</th>
+                <th>Password</th>
+                <th>Expected</th>
+                <th>Actual</th>
+                <th>Result</th>
+            </tr>
+            {''.join(f"""
+            <tr class="{'row-High' if 'UNEXPECTED'
+                        in r.get('result','')
+                        else 'row-Low'}">
+                <td>{r.get('username','')}</td>
+                <td>{r.get('password','')}</td>
+                <td>{r.get('expected','')}</td>
+                <td>{r.get('actual','')}</td>
+                <td><b>{r.get('result','')}</b></td>
+            </tr>""" for r in report['auth_results'])}
+        </table>
+    </div>
+
+    <!-- API Results -->
+    <div class="section">
+        <h2>🔌 API Endpoints
+            ({len(report['api_results'])} tested)
+        </h2>
+        <table>
+            <tr>
+                <th>Endpoint</th>
+                <th>Method</th>
+                <th>Status</th>
+                <th>Response</th>
+                <th>Risk</th>
+            </tr>
+            {''.join(f"""
+            <tr class="{'row-exposed' if 'EXPOSED'
+                        in r.get('accessible','')
+                        else 'row-protected'}">
+                <td>{r.get('url','')}</td>
+                <td>{r.get('method','')}</td>
+                <td>{r.get('status_code','')}</td>
+                <td>{r.get('response','')[:50]}</td>
+                <td><b>{r.get('accessible','')}</b></td>
+            </tr>""" for r in report['api_results'])}
+        </table>
+    </div>
+
+    <!-- Spider URLs -->
+    <div class="section">
+        <h2>🕷️ Discovered URLs
+            ({len(report['spider_urls'])} URLs)
+        </h2>
+        <table>
+            <tr><th>URL</th></tr>
+            {''.join(f"<tr><td>{url}</td></tr>"
+                     for url in report['spider_urls'])}
+        </table>
+    </div>
+
+</div>
+
+<div class="footer">
+    OWASP ZAP Security Report |
+    Generated: {report['date']} |
+    Target: {report['target']}
+</div>
+
+</body>
+</html>"""
+
+    with open(html_path, 'w', encoding='utf-8') as f:
         f.write(html)
 
+    print(f'Reports saved to reports/ folder')
     return json_path, html_path
 
 def get_intercepted_requests(zap):
