@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remediation Guide — OWASP ZAP Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', sans-serif; }
+
+        .navbar {
+            background: #161b22;
+            padding: 14px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #30363d;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .navbar h1 { color: #58a6ff; font-size: 18px; }
+        .nav-links a {
+            color: #8b949e; text-decoration: none;
+            margin-left: 20px; font-size: 14px;
+            padding: 6px 12px; border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .nav-links a:hover { background: #21262d; color: #c9d1d9; }
+        .nav-links a.active { background: #1f6feb; color: #fff; }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 30px 20px; }
+
+        .page-header {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            padding: 24px 28px;
+            margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .page-header h2 { color: #f0f6fc; font-size: 22px; }
+        .page-header p { color: #8b949e; font-size: 14px; margin-top: 6px; }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .stat-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-card .num { font-size: 36px; font-weight: 700; margin-bottom: 6px; }
+        .stat-card .label { color: #8b949e; font-size: 13px; }
+        .num.total { color: #58a6ff; }
+        .num.fixed { color: #3fb950; }
+        .num.pending { color: #f0883e; }
+
+        .actions-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn-rescan { background: #238636; color: #fff; }
+        .btn-compare { background: #1f6feb; color: #fff; }
+        .btn-back { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+
+        .vuln-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .vuln-header {
+            padding: 18px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            -webkit-user-select: none; user-select: none;
+            border-bottom: 1px solid #30363d;
+        }
+        .vuln-header:hover { background: #1c2128; }
+        .vuln-title { display: flex; align-items: center; gap: 12px; }
+        .vuln-title h3 { color: #f0f6fc; font-size: 16px; }
+        .risk-badge {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .risk-High { background: #490202; color: #ff7b72; border: 1px solid #ff7b72; }
+        .risk-Medium { background: #341a00; color: #f0883e; border: 1px solid #f0883e; }
+        .risk-Low { background: #1b2f1b; color: #3fb950; border: 1px solid #3fb950; }
+        .risk-Unknown { background: #1c2128; color: #8b949e; border: 1px solid #30363d; }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-fixed { background: #1b2f1b; color: #3fb950; border: 1px solid #3fb950; }
+        .status-pending { background: #341a00; color: #f0883e; border: 1px solid #f0883e; }
+
+        .chevron { color: #8b949e; font-size: 18px; transition: transform 0.2s; }
+        .vuln-card.open .chevron { transform: rotate(180deg); }
+
+        .vuln-body { display: none; padding: 24px; }
+        .vuln-card.open .vuln-body { display: block; }
+
+        .section-title {
+            color: #58a6ff;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+            margin-top: 20px;
+        }
+        .section-title:first-child { margin-top: 0; }
+
+        .desc-text { color: #c9d1d9; font-size: 14px; line-height: 1.7; }
+        .root-cause { color: #f0883e; font-size: 14px; line-height: 1.6; background: #1c1400; padding: 12px 16px; border-radius: 6px; border-left: 3px solid #f0883e; }
+
+        .steps-list { list-style: none; counter-reset: steps; }
+        .steps-list li {
+            counter-increment: steps;
+            padding: 10px 0 10px 36px;
+            position: relative;
+            color: #c9d1d9;
+            font-size: 14px;
+            border-bottom: 1px solid #21262d;
+        }
+        .steps-list li:last-child { border-bottom: none; }
+        .steps-list li::before {
+            content: counter(steps);
+            position: absolute;
+            left: 0;
+            top: 10px;
+            width: 22px;
+            height: 22px;
+            background: #1f6feb;
+            color: #fff;
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .code-block {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #79c0ff;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            line-height: 1.6;
+        }
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .file-tag {
+            background: #21262d;
+            color: #8b949e;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        .copy-btn {
+            background: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #30363d;
+            padding: 4px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .copy-btn:hover { background: #30363d; }
+
+        .verify-cmd {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-left: 3px solid #3fb950;
+            border-radius: 6px;
+            padding: 12px 16px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #3fb950;
+        }
+
+        .refs-list { list-style: none; }
+        .refs-list li { padding: 4px 0; }
+        .refs-list a { color: #58a6ff; font-size: 13px; text-decoration: none; }
+        .refs-list a:hover { text-decoration: underline; }
+
+        .fix-action {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #30363d;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .fix-notes {
+            flex: 1;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            padding: 8px 12px;
+            font-size: 13px;
+        }
+        .btn-mark-fixed { background: #238636; color: #fff; }
+        .btn-mark-fixed:hover { background: #2ea043; }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #8b949e;
+        }
+        .empty-state h3 { font-size: 20px; margin-bottom: 10px; }
+        .empty-state p { font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <h1>OWASP ZAP Security Dashboard</h1>
+    <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/remediation" class="active">Remediation</a>
+        <a href="/compare">Before vs After</a>
+        <a href="/report">Report</a>
+    </div>
+</nav>
+
+<div class="container">
+
+    <div class="page-header">
+        <div>
+            <h2>Vulnerability Remediation Guide</h2>
+            <p>Step-by-step fix instructions for each vulnerability found in your scans</p>
+        </div>
+        <div class="actions-bar">
+            <a href="/rescan" class="btn btn-rescan">Re-Scan After Fix</a>
+            <a href="/compare" class="btn btn-compare">Before vs After</a>
+            <a href="/" class="btn btn-back">Back to Dashboard</a>
+        </div>
+    </div>
+
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="num total">{{ total }}</div>
+            <div class="label">Total Vulnerabilities</div>
+        </div>
+        <div class="stat-card">
+            <div class="num fixed">{{ fixed }}</div>
+            <div class="label">Fixed</div>
+        </div>
+        <div class="stat-card">
+            <div class="num pending">{{ total - fixed }}</div>
+            <div class="label">Pending Fix</div>
+        </div>
+    </div>
+
+    {% if vulns %}
+        {% for vuln in vulns %}
+        <div class="vuln-card" id="card-{{ loop.index }}">
+            <div class="vuln-header" onclick="toggleCard('card-{{ loop.index }}')">
+                <div class="vuln-title">
+                    <span class="risk-badge risk-{{ vuln.risk }}">{{ vuln.risk }}</span>
+                    <h3>{{ vuln.name }}</h3>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <span class="status-badge status-{{ vuln.status }}">
+                        {% if vuln.status == 'fixed' %}Fixed{% else %}Pending{% endif %}
+                    </span>
+                    <span class="chevron">&#8964;</span>
+                </div>
+            </div>
+            <div class="vuln-body">
+
+                <div class="section-title">Description</div>
+                <p class="desc-text">{{ vuln.description }}</p>
+
+                <div class="section-title">Root Cause</div>
+                <div class="root-cause">{{ vuln.root_cause }}</div>
+
+                <div class="section-title">Step-by-Step Fix</div>
+                <ol class="steps-list">
+                    {% for step in vuln.steps %}
+                    <li>{{ step }}</li>
+                    {% endfor %}
+                </ol>
+
+                <div class="section-title">Fix Code</div>
+                <div class="code-header">
+                    <span class="file-tag">{{ vuln.fix_file }}</span>
+                    <button class="copy-btn" onclick="copyCode(this, 'code-{{ loop.index }}')">Copy</button>
+                </div>
+                <div class="code-block" id="code-{{ loop.index }}">{{ vuln.fix_code }}</div>
+
+                <div class="section-title">Verify Fix (Run this after fixing)</div>
+                <div class="verify-cmd">$ {{ vuln.verify_command }}</div>
+
+                <div class="section-title">References</div>
+                <ul class="refs-list">
+                    {% for ref in vuln.references %}
+                    <li><a href="{{ ref }}" target="_blank">{{ ref }}</a></li>
+                    {% endfor %}
+                </ul>
+
+                <div class="fix-action">
+                    <input class="fix-notes" type="text"
+                           placeholder="Add notes about how you fixed this (optional)..."
+                           id="notes-{{ loop.index }}">
+                    <button class="btn btn-mark-fixed"
+                            onclick="markFixed(this, '{{ vuln.name | e }}')"
+                        Mark as Fixed
+                    </button>
+                </div>
+
+            </div>
+        </div>
+        {% endfor %}
+
+    {% else %}
+    <div class="empty-state">
+        <h3>No vulnerabilities found yet</h3>
+        <p>Run a scan first from the <a href="/" style="color:#58a6ff;">dashboard</a> to see remediation guides here.</p>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+    function toggleCard(id) {
+        var card = document.getElementById(id);
+        if (card.classList.contains('open')) {
+            card.classList.remove('open');
+        } else {
+            card.classList.add('open');
+        }
+    }
+
+    function copyCode(btn, codeId) {
+        var code = document.getElementById(codeId).innerText;
+        navigator.clipboard.writeText(code).then(function() {
+            btn.textContent = 'Copied!';
+            setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+        });
+    }
+
+    function markFixed(btn, vulnName) {
+    var card = btn.closest('.vuln-card');
+    var idx = card.id.replace('card-', '');
+    var notes = document.getElementById('notes-' + idx).value;
+    var formData = new FormData();
+    formData.append('vuln_name', vulnName);
+    formData.append('notes', notes);
+    fetch('/mark-fixed', {
+        method: 'POST',
+        body: formData
+    }).then(function(r) {
+        return r.json();
+    }).then(function(data) {
+        if (data.success) {
+            var badge = card.querySelector('.status-badge');
+            badge.textContent = 'Fixed';
+            badge.className = 'status-badge status-fixed';
+            alert('Marked as fixed! Now click Re-Scan to verify.');
+        }
+    });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risk Assessment — OWASP ZAP Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', sans-serif; }
+
+        .navbar {
+            background: #161b22; padding: 14px 30px;
+            display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 1px solid #30363d; position: sticky; top: 0; z-index: 100;
+        }
+        .navbar h1 { color: #58a6ff; font-size: 18px; }
+        .nav-links a {
+            color: #8b949e; text-decoration: none; margin-left: 20px;
+            font-size: 14px; padding: 6px 12px; border-radius: 6px; transition: all 0.2s;
+        }
+        .nav-links a:hover { background: #21262d; color: #c9d1d9; }
+        .nav-links a.active { background: #1f6feb; color: #fff; }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 30px 20px; }
+
+        /* Overall Risk Score Card */
+        .overall-card {
+            border-radius: 12px; padding: 30px; margin-bottom: 30px;
+            display: flex; align-items: center; justify-content: space-between;
+            flex-wrap: wrap; gap: 20px;
+        }
+        .overall-card.critical { background: linear-gradient(135deg, #1a0000, #2d0000); border: 1px solid #ff7b72; }
+        .overall-card.high    { background: linear-gradient(135deg, #1a0a00, #2d1500); border: 1px solid #f0883e; }
+        .overall-card.medium  { background: linear-gradient(135deg, #1a1400, #2d2400); border: 1px solid #e3b341; }
+        .overall-card.low     { background: linear-gradient(135deg, #001a00, #002d00); border: 1px solid #3fb950; }
+
+        .overall-left h2 { font-size: 22px; color: #f0f6fc; margin-bottom: 8px; }
+        .overall-left p  { font-size: 14px; color: #8b949e; }
+
+        .score-circle {
+            width: 120px; height: 120px; border-radius: 50%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            border: 4px solid currentColor;
+        }
+        .score-circle.critical { color: #ff7b72; }
+        .score-circle.high     { color: #f0883e; }
+        .score-circle.medium   { color: #e3b341; }
+        .score-circle.low      { color: #3fb950; }
+        .score-num  { font-size: 36px; font-weight: 800; }
+        .score-max  { font-size: 13px; color: #8b949e; }
+        .score-label{ font-size: 14px; font-weight: 600; margin-top: 4px; }
+
+        /* Stats row */
+        .stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 28px; }
+        .stat-card {
+            background: #161b22; border: 1px solid #30363d;
+            border-radius: 10px; padding: 18px; text-align: center;
+        }
+        .stat-num { font-size: 32px; font-weight: 700; margin-bottom: 4px; }
+        .stat-label { color: #8b949e; font-size: 12px; }
+        .c-critical { color: #ff7b72; }
+        .c-high     { color: #f0883e; }
+        .c-medium   { color: #e3b341; }
+        .c-low      { color: #3fb950; }
+
+        /* Vuln risk cards */
+        .section-title {
+            color: #f0f6fc; font-size: 18px; font-weight: 600;
+            margin-bottom: 16px; padding-bottom: 10px;
+            border-bottom: 1px solid #30363d;
+        }
+
+        .risk-card {
+            background: #161b22; border: 1px solid #30363d;
+            border-radius: 10px; margin-bottom: 20px; overflow: hidden;
+        }
+        .risk-card-header {
+            padding: 18px 24px; display: flex; align-items: center;
+            justify-content: space-between; cursor: pointer;
+            border-bottom: 1px solid #30363d;
+        }
+        .risk-card-header:hover { background: #1c2128; }
+
+        .risk-title { display: flex; align-items: center; gap: 12px; }
+        .risk-title h3 { color: #f0f6fc; font-size: 15px; }
+
+        .level-badge {
+            padding: 4px 12px; border-radius: 12px;
+            font-size: 12px; font-weight: 700;
+        }
+        .level-Critical { background: #490202; color: #ff7b72; border: 1px solid #ff7b72; }
+        .level-High     { background: #341a00; color: #f0883e; border: 1px solid #f0883e; }
+        .level-Medium   { background: #2d2400; color: #e3b341; border: 1px solid #e3b341; }
+        .level-Low      { background: #1b2f1b; color: #3fb950; border: 1px solid #3fb950; }
+
+        .cvss-badge {
+            background: #21262d; border: 1px solid #30363d;
+            padding: 4px 12px; border-radius: 12px;
+            font-size: 12px; font-weight: 600; color: #c9d1d9;
+        }
+
+        .risk-bar-wrap { display: flex; align-items: center; gap: 10px; min-width: 160px; }
+        .risk-bar-bg {
+            flex: 1; height: 8px; background: #21262d;
+            border-radius: 4px; overflow: hidden;
+        }
+        .risk-bar-fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+        .fill-Critical { background: #ff7b72; }
+        .fill-High     { background: #f0883e; }
+        .fill-Medium   { background: #e3b341; }
+        .fill-Low      { background: #3fb950; }
+        .risk-score-txt { font-size: 13px; font-weight: 700; min-width: 32px; text-align: right; }
+
+        .chevron { color: #8b949e; font-size: 18px; transition: transform 0.2s; }
+        .risk-card.open .chevron { transform: rotate(180deg); }
+
+        .risk-card-body { display: none; padding: 24px; }
+        .risk-card.open .risk-card-body { display: block; }
+
+        /* Analogy box */
+        .analogy-box {
+            background: #1c2128; border: 1px solid #30363d;
+            border-left: 4px solid #58a6ff; border-radius: 8px;
+            padding: 16px 20px; margin-bottom: 20px;
+        }
+        .analogy-label { color: #58a6ff; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+        .analogy-text  { color: #c9d1d9; font-size: 14px; line-height: 1.7; }
+
+        /* Attack scenario */
+        .attack-box {
+            background: #1a0000; border: 1px solid #490202;
+            border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;
+        }
+        .attack-label { color: #ff7b72; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+        .attack-text  { color: #c9d1d9; font-size: 14px; line-height: 1.7; }
+
+        /* What attacker can do */
+        .sec-title {
+            color: #8b949e; font-size: 12px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 10px; margin-top: 20px;
+        }
+        .attacker-list { list-style: none; }
+        .attacker-list li {
+            padding: 8px 0 8px 28px; position: relative;
+            color: #c9d1d9; font-size: 14px;
+            border-bottom: 1px solid #21262d;
+        }
+        .attacker-list li:last-child { border-bottom: none; }
+        .attacker-list li::before {
+            content: '⚠';
+            position: absolute; left: 0; top: 8px;
+            font-size: 14px;
+        }
+
+        /* Impact grid */
+        .impact-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; margin-top: 10px; }
+        .impact-item {
+            background: #0d1117; border: 1px solid #30363d;
+            border-radius: 8px; padding: 14px;
+        }
+        .impact-item-label { color: #8b949e; font-size: 11px; font-weight: 600; margin-bottom: 6px; text-transform: uppercase; }
+        .impact-item-val   { color: #c9d1d9; font-size: 13px; line-height: 1.5; }
+        .impact-business {
+            grid-column: 1/-1;
+            background: #1a1400; border: 1px solid #e3b341;
+            border-radius: 8px; padding: 14px;
+        }
+        .impact-business .impact-item-label { color: #e3b341; }
+
+        /* Urgency */
+        .urgency-bar {
+            display: flex; align-items: center; gap: 12px;
+            background: #161b22; border: 1px solid #30363d;
+            border-radius: 8px; padding: 14px 18px; margin-top: 20px;
+        }
+        .urgency-icon { font-size: 20px; }
+        .urgency-text { font-size: 14px; font-weight: 600; }
+        .urgency-text.Critical { color: #ff7b72; }
+        .urgency-text.High     { color: #f0883e; }
+        .urgency-text.Medium   { color: #e3b341; }
+        .urgency-text.Low      { color: #3fb950; }
+
+        .affected-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+        .affected-tag {
+            background: #21262d; color: #8b949e;
+            padding: 4px 12px; border-radius: 20px; font-size: 12px;
+            border: 1px solid #30363d;
+        }
+
+        .empty-state { text-align: center; padding: 60px; color: #8b949e; }
+        .empty-state h3 { font-size: 20px; color: #f0f6fc; margin-bottom: 10px; }
+        .empty-state a  { color: #58a6ff; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <h1>OWASP ZAP Security Dashboard</h1>
+    <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/remediation">Remediation</a>
+        <a href="/risk-assessment" class="active">Risk Assessment</a>
+        <a href="/compare">Before vs After</a>
+        <a href="/report">Report</a>
+    </div>
+</nav>
+
+<div class="container">
+
+    {% if vulns %}
+
+    <!-- Overall Risk Score -->
+    <div class="overall-card {{ overall.color }}">
+        <div class="overall-left">
+            <h2>Overall Security Risk: {{ overall.level }}</h2>
+            <p>{{ overall.message }}</p>
+            <p style="margin-top:10px;font-size:13px;color:#8b949e;">
+                Target: http://127.0.0.1:5001 &nbsp;|&nbsp;
+                {{ total }} vulnerabilities across {{ vuln_count }} unique issues
+            </p>
+        </div>
+        <div class="score-circle {{ overall.color }}">
+            <span class="score-num">{{ overall.score }}</span>
+            <span class="score-max">/100</span>
+            <span class="score-label">{{ overall.level }}</span>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-num c-critical">{{ counts.critical }}</div>
+            <div class="stat-label">Critical</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-num c-high">{{ counts.high }}</div>
+            <div class="stat-label">High Risk</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-num c-medium">{{ counts.medium }}</div>
+            <div class="stat-label">Medium Risk</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-num c-low">{{ counts.low }}</div>
+            <div class="stat-label">Low Risk</div>
+        </div>
+    </div>
+
+    <!-- Per Vulnerability Risk Cards -->
+    <div class="section-title">Vulnerability Risk Analysis</div>
+
+    {% for vuln in vulns %}
+    <div class="risk-card" id="rcard-{{ loop.index }}">
+        <div class="risk-card-header" onclick="toggleRCard('rcard-{{ loop.index }}')">
+            <div class="risk-title">
+                <span class="level-badge level-{{ vuln.risk_level }}">{{ vuln.risk_level }}</span>
+                <h3>{{ vuln.name }}</h3>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px;">
+                <span class="cvss-badge">CVSS {{ vuln.cvss_score }}</span>
+                <div class="risk-bar-wrap">
+                    <div class="risk-bar-bg">
+                        <div class="risk-bar-fill fill-{{ vuln.risk_level }}"
+                             style="width:{{ vuln.risk_score }}%"></div>
+                    </div>
+                    <span class="risk-score-txt c-{{ vuln.risk_level | lower }}">{{ vuln.risk_score }}</span>
+                </div>
+                <span class="chevron">&#8964;</span>
+            </div>
+        </div>
+
+        <div class="risk-card-body">
+
+            <!-- Real World Analogy -->
+            <div class="analogy-box">
+                <div class="analogy-label">REAL WORLD ANALOGY</div>
+                <div class="analogy-text">{{ vuln.real_world_analogy }}</div>
+            </div>
+
+            <!-- Attack Scenario -->
+            <div class="attack-box">
+                <div class="attack-label">ATTACK SCENARIO — What actually happens</div>
+                <div class="attack-text">{{ vuln.attack_scenario }}</div>
+            </div>
+
+            <!-- What attacker can do -->
+            <div class="sec-title">What an attacker can do</div>
+            <ul class="attacker-list">
+                {% for action in vuln.what_attacker_can_do %}
+                <li>{{ action }}</li>
+                {% endfor %}
+            </ul>
+
+            <!-- Impact -->
+            <div class="sec-title">Impact Analysis</div>
+            <div class="impact-grid">
+                <div class="impact-item">
+                    <div class="impact-item-label">Confidentiality</div>
+                    <div class="impact-item-val">{{ vuln.impact.confidentiality }}</div>
+                </div>
+                <div class="impact-item">
+                    <div class="impact-item-label">Integrity</div>
+                    <div class="impact-item-val">{{ vuln.impact.integrity }}</div>
+                </div>
+                <div class="impact-item">
+                    <div class="impact-item-label">Availability</div>
+                    <div class="impact-item-val">{{ vuln.impact.availability }}</div>
+                </div>
+                <div class="impact-item">
+                    <div class="impact-item-label">Likelihood</div>
+                    <div class="impact-item-val">{{ vuln.likelihood }}</div>
+                </div>
+                <div class="impact-item impact-business">
+                    <div class="impact-item-label">Business Impact</div>
+                    <div class="impact-item-val">{{ vuln.impact.business_impact }}</div>
+                </div>
+            </div>
+
+            <!-- Affected Assets -->
+            <div class="sec-title">Affected Assets</div>
+            <div class="affected-tags">
+                {% for asset in vuln.affected_assets %}
+                <span class="affected-tag">{{ asset }}</span>
+                {% endfor %}
+            </div>
+
+            <!-- Urgency -->
+            <div class="urgency-bar">
+                <span class="urgency-icon">
+                    {% if vuln.risk_level == 'Critical' %}🔴
+                    {% elif vuln.risk_level == 'High' %}🟠
+                    {% elif vuln.risk_level == 'Medium' %}🟡
+                    {% else %}🟢{% endif %}
+                </span>
+                <span class="urgency-text {{ vuln.risk_level }}">{{ vuln.urgency }}</span>
+            </div>
+
+        </div>
+    </div>
+    {% endfor %}
+
+    {% else %}
+    <div class="empty-state">
+        <h3>No scan data yet</h3>
+        <p>Run a scan first from the <a href="/">dashboard</a> to see risk assessment.</p>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+    function toggleRCard(id) {
+        var card = document.getElementById(id);
+        if (card.classList.contains('open')) {
+            card.classList.remove('open');
+        } else {
+            card.classList.add('open');
+        }
+    }
+</script>
+</body>
+</html>

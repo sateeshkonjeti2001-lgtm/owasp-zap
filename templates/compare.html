@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Before vs After — OWASP ZAP Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', sans-serif; }
+
+        .navbar {
+            background: #161b22; padding: 14px 30px;
+            display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 1px solid #30363d; position: sticky; top: 0; z-index: 100;
+        }
+        .navbar h1 { color: #58a6ff; font-size: 18px; }
+        .nav-links a {
+            color: #8b949e; text-decoration: none; margin-left: 20px;
+            font-size: 14px; padding: 6px 12px; border-radius: 6px; transition: all 0.2s;
+        }
+        .nav-links a:hover { background: #21262d; color: #c9d1d9; }
+        .nav-links a.active { background: #1f6feb; color: #fff; }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 30px 20px; }
+
+        .page-title { color: #f0f6fc; font-size: 22px; margin-bottom: 6px; }
+        .page-sub { color: #8b949e; font-size: 14px; margin-bottom: 30px; }
+
+        .compare-grid {
+            display: grid;
+            grid-template-columns: 1fr 80px 1fr;
+            gap: 20px;
+            align-items: start;
+            margin-bottom: 30px;
+        }
+
+        .scan-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .scan-card-header {
+            padding: 16px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            border-bottom: 1px solid #30363d;
+        }
+        .before-header { background: #1c1400; color: #f0883e; }
+        .after-header { background: #0d1f0d; color: #3fb950; }
+
+        .scan-card-body { padding: 20px; }
+        .scan-date { color: #8b949e; font-size: 12px; margin-bottom: 16px; }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #21262d;
+        }
+        .metric-row:last-child { border-bottom: none; }
+        .metric-label { color: #8b949e; font-size: 14px; }
+        .metric-value { font-size: 20px; font-weight: 700; }
+        .val-high { color: #ff7b72; }
+        .val-medium { color: #f0883e; }
+        .val-low { color: #3fb950; }
+        .val-total { color: #58a6ff; }
+
+        .vs-col { display: flex; align-items: center; justify-content: center; }
+        .vs-text { color: #8b949e; font-size: 22px; font-weight: 700; }
+
+        .improvement-card {
+            background: #0d1f0d;
+            border: 1px solid #238636;
+            border-radius: 10px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .improvement-title { color: #3fb950; font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+        .imp-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+        .imp-item { text-align: center; }
+        .imp-num { font-size: 28px; font-weight: 700; color: #3fb950; }
+        .imp-num.negative { color: #ff7b72; }
+        .imp-label { color: #8b949e; font-size: 12px; margin-top: 4px; }
+
+        .no-data {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            padding: 48px;
+            text-align: center;
+            color: #8b949e;
+        }
+        .no-data h3 { font-size: 18px; margin-bottom: 10px; color: #f0f6fc; }
+        .no-data p { font-size: 14px; }
+        .no-data a { color: #58a6ff; }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: opacity 0.2s;
+            margin-right: 10px;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn-rescan { background: #238636; color: #fff; }
+        .btn-back { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <h1>OWASP ZAP Security Dashboard</h1>
+    <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/remediation">Remediation</a>
+        <a href="/compare" class="active">Before vs After</a>
+        <a href="/report">Report</a>
+    </div>
+</nav>
+
+<div class="container">
+
+    <h2 class="page-title">Before vs After Comparison</h2>
+    <p class="page-sub">See how your fixes improved the security posture of the application</p>
+
+    {% if before and after %}
+
+        {% if improvement %}
+        <div class="improvement-card">
+            <div class="improvement-title">Security Improvement Summary</div>
+            <div class="imp-grid">
+                <div class="imp-item">
+                    <div class="imp-num {% if improvement.high_diff < 0 %}negative{% endif %}">
+                        {% if improvement.high_diff > 0 %}-{{ improvement.high_diff }}{% else %}+{{ improvement.high_diff|abs }}{% endif %}
+                    </div>
+                    <div class="imp-label">High Risk</div>
+                </div>
+                <div class="imp-item">
+                    <div class="imp-num {% if improvement.medium_diff < 0 %}negative{% endif %}">
+                        {% if improvement.medium_diff > 0 %}-{{ improvement.medium_diff }}{% else %}+{{ improvement.medium_diff|abs }}{% endif %}
+                    </div>
+                    <div class="imp-label">Medium Risk</div>
+                </div>
+                <div class="imp-item">
+                    <div class="imp-num {% if improvement.low_diff < 0 %}negative{% endif %}">
+                        {% if improvement.low_diff > 0 %}-{{ improvement.low_diff }}{% else %}+{{ improvement.low_diff|abs }}{% endif %}
+                    </div>
+                    <div class="imp-label">Low Risk</div>
+                </div>
+                <div class="imp-item">
+                    <div class="imp-num {% if improvement.total_diff < 0 %}negative{% endif %}">
+                        {% if improvement.total_diff > 0 %}-{{ improvement.total_diff }}{% else %}+{{ improvement.total_diff|abs }}{% endif %}
+                    </div>
+                    <div class="imp-label">Total Alerts Reduced</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="compare-grid">
+            <!-- Before -->
+            <div class="scan-card">
+                <div class="scan-card-header before-header">Before Fix (Initial Scan)</div>
+                <div class="scan-card-body">
+                    <div class="scan-date">Scanned: {{ before.date }}</div>
+                    <div class="metric-row">
+                        <span class="metric-label">High Risk</span>
+                        <span class="metric-value val-high">{{ before.high }}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Medium Risk</span>
+                        <span class="metric-value val-medium">{{ before.medium }}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Low Risk</span>
+                        <span class="metric-value val-low">{{ before.low }}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Total Alerts</span>
+                        <span class="metric-value val-total">{{ before.total }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VS -->
+            <div class="vs-col">
+                <span class="vs-text">VS</span>
+            </div>
+
+            <!-- After -->
+            <div class="scan-card">
+                <div class="scan-card-header after-header">After Fix (Re-Scan)</div>
+                <div class="scan-card-body">
+                    <div class="scan-date">Scanned: {{ after.date }}</div>
+                    <div class="metric-row">
+                        <span class="metric-label">High Risk</span>
+                        <span class="metric-value val-high">{{ after.high }}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Medium Risk</span>
+                        <span class="metric-value val-medium">{{ after.medium }}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Low Risk</span>
+                        <span class="metric-value val-low">{{ after.low }}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Total Alerts</span>
+                        <span class="metric-value val-total">{{ after.total }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <a href="/rescan" class="btn btn-rescan">Run Another Re-Scan</a>
+        <a href="/remediation" class="btn btn-back">Back to Remediation</a>
+
+    {% else %}
+    <div class="no-data">
+        <h3>No comparison data yet</h3>
+        <p>
+            To see Before vs After comparison:<br><br>
+            1. Run an initial scan from the <a href="/">dashboard</a><br>
+            2. Fix the vulnerabilities using the <a href="/remediation">Remediation Guide</a><br>
+            3. Click <a href="/rescan">Re-Scan</a> to scan again after fixing<br>
+            4. Come back here to see the improvement!
+        </p>
+    </div>
+    {% endif %}
+
+</div>
+</body>
+</html>
